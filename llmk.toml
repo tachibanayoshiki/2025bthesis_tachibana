@@ -1,0 +1,4 @@
+source = [ "2025bthesis_tachibana.tex" ]
+
+latex = "platex"
+bibtex = "pbibtex"

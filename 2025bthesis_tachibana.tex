@@ -1,0 +1,574 @@
+%
+% 本稿は，特別研究II 研究報告書の原稿を執筆する際，注意点等をまとめたものである．執筆の際に参考になれば幸いである．
+%両面印刷する時は twoside にする
+%
+% latex = "platex"
+% bibtex = "pbibtex"
+%
+\documentclass[jlreq,twoside]{jsreport}
+\usepackage{csg-thesis} % 論文テンプレートパッケージ
+\usepackage{url} % 画像挿入やURL表示用
+\usepackage[dvipdfmx]{graphicx}
+\usepackage{hyperref}
+\usepackage{listings,jvlisting} %日本語のコメントアウトをする場合
+
+%ここからソースコードの表示に関する設定
+\lstset{
+  basicstyle={\ttfamily},
+  identifierstyle={\small},
+  commentstyle={\smallitshape},
+  keywordstyle={\small\bfseries},
+  ndkeywordstyle={\small},
+  stringstyle={\small\ttfamily},
+  frame={tb},
+  breaklines=true,
+  columns=[l]{fullflexible},
+  numbers=left,
+  xrightmargin=0zw,
+  xleftmargin=3zw,
+  numberstyle={\scriptsize},
+  stepnumber=1,
+  numbersep=1zw,
+  lineskip=-0.5ex
+}
+
+% 題目
+% 適当に\\で区切って見やすくする
+\title{BLE (Bluetooth Low Energy) を活用した\\物理的すれ違いに基づく\\大学内匿名マッチングアプリケーションの開発と評価}
+
+% 特別研究II研究報告書
+\degree{特別研究II研究報告書}
+
+% 名前
+\author{橘  賀生}
+
+% 提出日
+\date{2025年2月10日}
+
+% 卒業年度
+\schoolyear{2025年}
+
+% 所属
+\department{京都産業大学 情報理工学部 情報理工学科 }
+%\department { 京都産業大学 情報理工学部 情報理工学科 }
+
+% 学籍番号
+\stnumber{253956}
+
+% 指導教員(教官ではなくなった...)
+\supervisor{ 玉田春昭　 教授}
+
+
+
+
+\begin{document}    % 必ず document 環境開始が必要
+
+\maketitle
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% 概要
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{abstract}
+% ここに400〜600字文字程度の概要を書く．
+近年、大学生活において新たな友人関係を構築する機会は、授業やサークル活動など限られた場面に限定されている。また、既存のマッチングアプリケーションは、プロフィール情報を重視した即座のマッチングを前提としており、物理的な接近性や偶然の出会いといった要素が考慮されていない。本研究では、BLE (Bluetooth Low Energy) 技術を活用し、キャンパス内での物理的なすれ違いを起点とした匿名マッチングアプリケーション「Campus Connect」を開発した。
+
+本システムでは、15分周期でローテーションする一時識別子（TempID）を用いたBLE通信により、ユーザー間のすれ違いを検知する。RSSI値が-80dBm以上の場合に観測イベントを送信し、サーバー側で5分以内の相互観測を確認することで、すれ違いを確定する。ユーザーは、すれ違い履歴から相手に匿名で「いいね」を送ることができ、相互に「いいね」が成立した時点でマッチングとなる。実装には、フロントエンドにFlutter、バックエンドにNode.js（Hono）とFirebaseを採用し、認証、データ管理、すれ違い検知の一連の機能を実現した。
+
+本研究により、物理的な接近性を重視した新しいマッチング手法の実現可能性が示された。今後は、ユーザー評価実験を通じて、システムの有用性と課題を明らかにする予定である。
+
+\end{abstract}
+
+% 謝辞
+\begin{acknowledgments}
+
+\end{acknowledgments}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\tableofcontents       %% 目次
+
+%
+% 目次等にはローマ数字を使い、本文開始ページを 1 ページ目にできる
+% この方が見た目がきれいであるが、全体のページ数は減って見える
+% ここでローマ数字に変えた場合は chapter 1 でアラビア数字に戻すこと
+%
+%\pagenumbering{roman}  %% ページ番号をローマ数字にする
+
+\listoffigures         %% 図目次(図がない場合は不要)
+\listoftables          %% 表目次(表がない場合は不要)
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    % 本文
+    % 以下に本文の記述を行なっていく．
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\chapter{はじめに}
+
+\section{研究の背景}
+近年、大学生活における人間関係の構築は、デジタル化の進展やライフスタイルの多様化に伴い、偶発的な出会いの機会が減少しているという課題に直面している\cite{REQUIREMENTS}。多くの学生は、同じキャンパスに通いながらも、授業やサークル活動といった限定的なコミュニティ以外で、学年や学部を超えた交流の機会を得ることが難しくなっている。
+
+現在、多くのマッチングアプリケーションが存在し、新たな人間関係を構築する手段として定着している。しかし、既存のサービスの多くは、ユーザーが顔写真や詳細なプロフィール情報を事前に登録し、デジタル上での明確な検索条件に基づいて相手を選別する「検索型」のマッチングを前提としている\cite{REQUIREMENTS}。このような形式は、効率的である一方で、現実世界でのすれ違いや偶然の出会いが持つ自然な文脈や、対面した際の直感的な要素が捨象されがちである。また、詳細な個人情報を不特定多数に公開することへの心理的ハードルも存在する。
+
+\section{研究の目的}
+本研究の目的は、同じ大学に通う学生同士が、キャンパス内での物理的な「すれ違い」をきっかけとして、匿名性を保ちながら緩やかにつながる機会を提供するアプリケーション「Campus Connect」を開発することである\cite{REQUIREMENTS}。
+
+本研究では、Bluetooth Low Energy (BLE) 技術を活用し、スマートフォンを持ったユーザー同士の物理的な接近を検知する。この「物理的接近性」をマッチングの必須条件とすることで、「リアル $\times$ デジタル」による偶然の再会を重視した体験を創出する。また、すれ違った段階では相手の個人情報を詳細には開示せず、相互に関心を持った場合（相互「いいね」）にのみマッチングを成立させることで、プライバシーに配慮した安心感のある設計を目指す。
+
+本論文では、提案システムの設計思想、BLEを用いたすれ違い検知の技術的実装、およびプロトタイプの実装について述べ、その実現可能性と有効性について論じる。
+
+\section{本論文の構成} 本論文は全5章で構成される。第2章では、既存のマッチングサービスやBLEを用いた位置情報システムに関する関連研究について述べる。第3章では、提案する「Campus Connect」のシステム設計および詳細な仕様について説明する。第4章では、実装したシステムの動作検証および評価について述べる。最後に第5章で、本研究のまとめと今後の展望について述べる。
+
+\chapter{提案手法}
+\label{chap:proposal}
+
+本章では、本研究で開発した「Campus Connect」のシステム構成および主要な機能の実現手法について述べる。
+
+\section{システム概要}
+本システムは、ユーザーが利用するスマートフォンアプリ（クライアント）と、データ管理およびビジネスロジックを担当するバックエンドサーバーによって構成される\cite{README,tech_stack}。
+
+クライアントサイドは、クロスプラットフォーム開発フレームワークである Flutter を用いて開発し、iOS および Android の両OSに対応する。BLEの制御やユーザーインターフェース（UI）の描画はクライアント側で行う。
+バックエンドサイドは、Google Cloud Platform 上の Firebase を基盤として採用している。APIサーバーとして Node.js (Hono) を稼働させ、認証機能には Firebase Authentication、データベースには Cloud Firestore を使用している\cite{tech_stack}。
+
+\section{BLEによるすれ違い検知}
+本システムの中核となるすれ違い検知機能は、BLEのアドバタイズ（Advertise）機能とスキャン（Scan）機能を組み合わせることで実現している\cite{ble_specification}。
+
+\subsection{一時識別子 (TempID) の生成と管理}
+プライバシー保護およびセキュリティ対策のため、端末固有のMACアドレスではなく、アプリケーション独自に生成した「一時識別子（TempID）」を使用して個体識別を行う\cite{ble_specification}。
+各クライアント端末は、15分ごとに新しい TempID を生成し、ローテーションさせる。生成された TempID は、BLEのアドバタイジングパケットに含まれる Local Name （形式: \texttt{CC-<TempID>}）および GATT 特性（Characteristic）として周囲にブロードキャストされる。
+同時に、クライアントはバックエンドAPI (`POST /api/encounters/register-tempid`) を介して、現在使用中の TempID とその有効期限（約16分）をサーバーに登録する\cite{ble_specification}。これにより、サーバーは TempID から特定のユーザーを識別することが可能となる。
+
+\subsection{検知と判定ロジック}
+すれ違いの判定は、以下のプロセスで行われる\cite{ble_specification}。
+
+\begin{enumerate}
+  \item \textbf{スキャンとフィルタリング}: クライアント端末は、フォアグラウンド動作中に周囲のBLEデバイスをスキャンする。サービスUUIDを用いて「Campus Connect」のデバイスのみをフィルタリングし、受信信号強度（RSSI）がしきい値（初期設定: $-80$dBm 以上）を超えたデバイスを検出対象とする。
+  \item \textbf{観測イベントの送信}: 条件を満たすデバイス（TempID）を検出した場合、クライアントはサーバーに対して観測イベント (`POST /api/encounters/observe`) を送信する。このリクエストには、観測した TempID と自身の認証情報が含まれる。
+  \item \textbf{相互観測の確認}: サーバーは、観測イベントを受信すると、データベースを参照して以下の条件を確認する。
+  \begin{itemize}
+    \item 観測された TempID が有効期限内であり、かつ有効なユーザーに紐づいているか。
+    \item \textbf{5分以内}に、相手ユーザーからも自分に対する観測イベントが送信されているか（相互観測）。
+  \end{itemize}
+  サーバーは、双方向からの観測が確認できた場合のみを正規の「すれ違い (Encounter)」として確定し、データベースに記録する。この仕組みにより、一方的な遠方からの検知や、リプレイ攻撃による不正なすれ違い記録を排除している。
+\end{enumerate}
+
+\section{匿名マッチング機能}
+\subsection{すれ違い履歴と「いいね」}
+確定したすれ違い情報は、過去24時間分のみが「すれ違い履歴」としてユーザーに提示される\cite{REQUIREMENTS}。履歴には相手の学部・学年などの基本情報が表示されるが、詳細なプロフィールは制限される。
+ユーザーは履歴上のユーザーに対して「いいね」を送ることができる。本システムの特徴として、この「いいね」は相手に一切通知されない（完全匿名）。相手が自分に「いいね」を送っているかどうかも、マッチングが成立するまでは不明である\cite{REQUIREMENTS}。
+
+\subsection{マッチング成立}
+サーバー側で、二人のユーザーが相互に「いいね」を行っている状態（相互いいね）を検知した瞬間、即座にマッチング（友達関係）を成立させる\cite{REQUIREMENTS}。
+マッチング成立後は、互いの詳細なプロフィール（SNSアカウント等を含む）が閲覧可能となる。本アプリ内にはチャット機能は実装しておらず、その後の交流は現実世界での再会や、公開されたSNSアカウントを通じて行う設計としている。
+
+\section{データ管理}
+本システムでは Cloud Firestore を用いてデータを管理している。主なデータ構造は以下の通りである\cite{tech_stack}。
+
+\begin{itemize}
+  \item \texttt{users}: ユーザーのプロフィール情報、所属学部、学年等を管理する。
+  \item \texttt{tempIds}: 現在有効な TempID とユーザーIDの対応関係を管理する。有効期限切れのIDは定期的に削除される。
+  \item \texttt{recentEncounters}: 各ユーザーの「最近すれ違った人」リストを管理するサブコレクション。最終すれ違い日時 (\texttt{lastEncounteredAt}) や接触回数 (\texttt{encounterCount}) を保持し、24時間が経過したデータは参照されなくなる。
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+
+
+
+
+本ドキュメントは，京都産業大学の特別研究II研究報告書用の\texttt{2025bthesis\_tachibana.tex} とビルド用スクリプトなどを一式まとめ，構成の統一及び、「どのように使うのか」を解説するガイドです．
+
+執筆は、\texttt{2025bthesis\_tachibana.tex} で行ってください
+
+
+\chapter{執筆の流れ}
+\section{準備}
+以下はダウンロードしたzipファイルに含まれているファイル一覧です．
+また、gitリポジトリの初期化も行なっています(git init実行済み)．
+
+\begin{itemize}
+    \item \texttt{csg-thesis.sty} : 必須のスタイルファイル
+    \item \texttt{csg-thesis.bst} : 日本語文献を含む参考文献リストのフォーマット
+    \item \texttt{latexmkrc} : overleafなどで自動ビルトする latexmk の設定ファイル
+    \item \texttt{llmk.toml} : texファイルをPDFに変換するビルドスクリプト
+    \item \texttt{README.md} : 特別研究II研究報告書の概要・締め切りなどまとめたREADME
+    \item \texttt{2025bthesis\_tachibana.bib} : 参考文献データベース
+    \item \texttt{2025bthesis\_tachibana.tex} : 特別研究II研究報告書本文(本文を執筆するファイル)
+    \item \texttt{guide.pdf} :  特別研究II研究報告書執筆ガイド
+    \item \texttt{images/javassist.eps} : 図の一例
+\end{itemize}
+
+%%%%
+\section{\LaTeX のインストール}
+以下のコマンドをターミナル上で行ってください．
+
+詳細は \url{(https://texwiki.texjp.org/?TeX%20Live%2FMac#install)} をご覧ください．
+数ギガバイト単位のファイルをダウンロードするため，テザリング状態では実行しないように注意してください．
+\\
+
+\paragraph{GUIありの場合}
+
+\begin{lstlisting}[caption=hoge,label=fuga]
+brew install --cask mactex
+sudo tlmgr update --self --all
+sudo tlmgr paper a4
+\end{lstlisting}
+
+\paragraph{GUIなしの場合}
+
+\begin{lstlisting}[caption=hoge,label=fuga]
+brew install --cask basictex
+sudo tlmgr update --self --all
+sudo tlmgr paper a4
+sudo tlmgr install collection-langjapanese
+\end{lstlisting}
+
+\section{Overleaf 上でのセットアップ手順}
+
+Overleaf とは \LaTeX 専用のオンラインエディタです． 環境構築不要で使用でき，便利な機能を沢山備えています．
+卒論の執筆にOverleafを利用する場合は，以下の手順に従ってください．
+
+\section{Overleafのプロジェクト作成}
+
+\begin{enumerate}
+  \item Overleaf (\url{https://ja.overleaf.com})にログインし，左上の「新規プロジェクト」→「空のプロジェクト」を選択する．
+  \item プロジェクト名を入力し，作成する.
+  \item 左側のファイル一覧に自動で \texttt{main.tex} が作られる．既存の \texttt{main.tex} を右クリックして「削除」を選び，削除する．
+\end{enumerate}
+
+\section{ファイルのアップロードと設定}
+
+\begin{enumerate}
+  \item 左上のメニューの下にある「 $\uparrow$ (アップロード)」ボタンをクリックする．
+  \item PC上に用意した以下のファイルをドラッグ＆ドロップする :
+    \begin{itemize}
+      \item \texttt{csg-thesis.sty}
+      \item \texttt{csg-thesis.bst}
+      \item \texttt{latexmkrc}
+      \item \texttt{2025bthesis\_tachibana.bib}
+      \item \texttt{2025bthesis\_tachibana.tex}
+      \item \texttt{images}
+    \end{itemize}
+   \item 左上のメニューボタンをクリックして，設定のコンパイラを \LaTeX に変更する．メイン文書が\texttt{2025bthesis\_tachibana.tex}になっていることも確認する．
+\end{enumerate}
+
+\section{Overleaf 上でのコンパイル}
+
+上のコンパイルボタンを押す．または，Mac なら \texttt{command + S}，Windows なら \texttt{Ctrl + S}のショートカットを使う．
+
+\chapter{本文執筆方法}
+以下，特別研究II研究報告書用スタイルファイルを用いたフォーマットの指針について述べるので，これに従って原稿を用意頂きたい．
+執筆のために編集しなければいけないファイルは \texttt{2025bthesis\_tachibana.tex} と \texttt{2025bthesis\_tachibana.bib} の2つです．
+\texttt{2025bthesis\_tachibana.tex} に本文を，\texttt{2025bthesis\_tachibana.bib}には参考文献を BibTeX 形式で記入します．
+
+本文を記述する\texttt{2025bthesis\_tachibana.tex}では、基本的に37\textasciitilde59行目の表紙、71\textasciitilde81行目の概要と謝辞、101行目以下の本文のみに記述を行ってください．
+
+また、本文の構成は以下に記載されている構成を使用してください．
+
+
+\begin{lstlisting}[caption=卒論構成]
+    \documentclass[jlreq,12pt,twoside]{jsreport}
+    \usepackage{csg-thesis} % 論文テンプレートパッケージ
+    \usepackage{url} % 画像挿入やURL表示用
+    \usepackage[dvipdfmx]{graphicx}
+    \usepackage{listings,jvlisting} % 日本語のコメントアウト
+    \lstset{listings_styl}
+
+    \title{% タイトル}
+    \degree{% 特別研究II研究報告書}
+    \author{% 名前}
+    \date{% 提出日}
+    \schoolyear{% 卒業年度}
+    \department{% ＿大学＿学部＿学科}
+    \stnumber{% 学籍番号}
+    \supervisor{% 担当教員}
+    \begin{document}
+    \maketitle
+    \begin{abstract} % 概要
+    \end{abstract}
+    \begin{acknowledgments}  % 謝辞
+    \end{acknowledgments}
+    \tableofcontents  % 目次
+    \listoffigures    % 図目次
+    \listoftables     % 表目次
+
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    % 本文
+    % 以下の構成を使用してください
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    \chapter{% はじめに}
+    \chapter{% 関連研究}
+      \section{% 節の題}
+      \section{% 節の題}
+    \chapter{% 提案手法}
+    \chapter{% 評価}
+    \chapter{% 考察}
+    \chapter{% 結果と今後の展望}
+    \chapter{% その他の章}
+
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    % 参考文献
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    \bibliographystyle{% 参考文献スタイルファイル}
+    \bibliography{% 参考文献データベース}
+
+    \end{document}
+\end{lstlisting}
+
+
+\section{表紙}
+
+以下の項目はフォームの入力の内容が反映されています．
+未入力や変更部分があれば，以下に従って入力してください．
+
+\begin{description}
+  \item[\texttt{\textbackslash title\{...\}}] :\\論文の正式titleを入力する．長い場合は適宜 \verb|\\|    （改行）してもよい．
+  \item[\texttt{\textbackslash degree\{...\}}] :  \\ \texttt{特別研究II 研究報告書}と記述する．
+  \item[\texttt{\textbackslash author\{...\}}]: \\著者（執筆者）の氏名をフルネームで記入する．必要に応じて和文と欧文を使い分ける．姓と名の間は空白を入れる．
+  \item[\texttt{\textbackslash date\{...\}}] :\\提出日を「YYYY年M月D日」の形式で記載する．省略するとコンパイル日時が自動挿入されるが，指定することを推奨する．
+  \item[\texttt{\textbackslash schoolyear\{...\}}]: \\卒業年度を「YYYY 年」の形式で記入する．
+  \item[\texttt{\textbackslash department\{...\}}] :\\大学名・所属学部・学科名を正確に記述する．
+  \item[\texttt{\textbackslash stnumber\{...\}}] :\\学籍番号を数字のみで入力する．
+  \item[\texttt{\textbackslash supervisor\{...\}}] :\\指導教員の氏名と肩書を「氏名 教授」の形式で記載する．
+\end{description}
+
+\section{章・節の追加/編集}
+
+\begin{itemize}
+  \item 必要に応じて \verb|\chapter{章}|、\verb|\section{節}| を追加・削除し，
+        自分の構成に合わせて編集する．
+  \item 章や節を追加した場合，目次や図表目次は自動更新されるため，
+        余計な手作業は不要です．
+\end{itemize}
+
+
+\section{相互参照}
+
+相互参照は，通常の \LaTeX 文書と同様に，\verb|\label| コマンドと\verb|\ref| コマンドを用いてください．
+例えば，章番号を参照する場合には，以下のListing．\ref{lst:def}のように \verb|\chapter| コマンドの直後に \verb|\label| コマンドを配置してラベルを宣言します．
+その上で，参照したい箇所に，\verb|\ref| コマンドを配置してください（Listing. \ref{lst:ref}）．
+詳しくは，本利用説明書内の利用例および，\LaTeX2e 美文書作成入門 の第 10 章 などを参照してください．
+
+\begin{minipage}[t]{0.45\linewidth}
+  \begin{lstlisting}[caption=ラベルの宣言方法, label=lst:def]
+    \chapter{first}
+    \label{chap:intro}
+  \end{lstlisting}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.45\linewidth}
+  \begin{lstlisting}[caption=ラベルの参照方法, label=lst:ref]
+    \ref{chap:intro} 章では，本利用説明書の位置づけについて述べています．
+  \end{lstlisting}
+\end{minipage}
+\begin{minipage}[t]{0.9\linewidth}
+  \begin{lstlisting}[caption=相互参照の出力例, label=lst:example]
+1 章では，本利用説明書の位置づけについて述べています.
+\end{lstlisting}
+\end{minipage}
+
+\section{図の挿入}
+
+図目次は，図を作成すると自動的に作成されるので操作する必要はない．
+
+\begin{enumerate}
+  \item 画像ファイルをPDF形式または PNG，EPS 形式で\texttt{images}ディレクトリの中に用意する．
+  \item 本文中に以下のように記述する（ファイル名が \texttt{javassist.eps} の例）．
+\end{enumerate}
+
+\begin{lstlisting}[language=TeX]
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.6\linewidth]{images/javassist.eps}
+    \caption{sample}
+    \label{fig:sample}
+\end{figure}
+\end{lstlisting}
+
+画像のパスを\verb|\includegraphics[width=0.6\linewidth]{...}| の \texttt{...}に記述してください．
+また，この例の \verb!width=0.6\linewidth! は画像の幅を，現在の環境での幅（画像を置きたい領域）の60\%に設定することを意味します．
+\texttt{0.6}の部分を変更することで、画像のサイズを調整できます．
+また，高さを指定していませんが，この場合，全体の大きさが自動的に修正されます．
+幅ではなく，高さで指定したい場合は \texttt{width}の代わりに \texttt{height} を使い，倍率を指定する場合は \texttt{scale} を使います．
+
+また，\verb|\caption{}| には図の説明文を記述してください．図表番号が自動的に付与されます．
+図表番号を参照したい場合は，\verb|\ref{fig:sample}| を使って図を参照します．
+この場合，\verb!fig:sample! は，\verb|\label{fig:sample}| を使ってラベル付けを行います．
+このとき，\verb|\label| は \verb|\caption| の後に記述する必要があります（\verb!\caption!で初めて図表番号が決定されるためです）．
+
+\newpage
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.6\linewidth]{images/javassist.eps}
+  \caption{sample}
+  \label{fig:sample}
+\end{figure}
+
+図\ref{fig:sample}より，...
+
+
+\section{表の挿入}
+
+表目次は，表を作成すると自動的に作成されるので操作する必要はない．
+
+表を作成するときは，本文中に以下のように記述する．
+
+\begin{lstlisting}
+\begin{table}[htbp]
+  \centering
+  \caption{sample}
+  \label{tab:sample}
+  \begin{tabular}{|l||c|r|}
+    \hline
+    left & center  & right \\
+    \hline
+    A      & B     & C      \\
+    D      & E     & F      \\
+    \hline
+  \end{tabular}
+\end{table}
+\end{lstlisting}
+
+\verb|\caption{}| には表の説明文を記述してください．相互参照をするために，\verb|\label{tab:sample}| を使ってラベル付けを行い，\verb|\ref{tab:sample}| を使って表を参照してください．
+表の内容は，\verb|\begin{tabular}| ... \verb|\end{tabular}|に記述します．
+\verb|\begin{tabular}{...}|で，各列の数とセルの位置，縦線を決めてください．l，c，rがそれぞれ左寄せ，中央揃え，右寄せ列の作成します．「｜」でセルの間の縦線の数を決めますなくても良い)．
+表の上下などに水平線を引く場合は，\verb|\hline|を使います．
+各行は「セル内容 \verb|&| セル内容 \verb|&| セル内容 \verb|\\|（改行）」で作成してください．
+
+\newpage
+
+\begin{table}[htbp]
+  \centering
+  \caption{sample}
+  \label{tab:sample}
+  \begin{tabular}{|l||c|r|}
+    \hline
+    left & center  & right \\
+    \hline
+    A      & B     & C      \\
+    D      & E     & F      \\
+    \hline
+  \end{tabular}
+\end{table}
+表\ref{tab:sample}より，...
+
+
+\chapter{参考文献}
+\begin{enumerate}
+  \item 参考文献データベース \texttt{2025bthesis\_tachibana.bib}を BibTeX 形式で文献情報を記述します．
+  \item texファイル中の
+  \begin{verbatim}
+  \bibliographystyle{csg-thesis}
+  \bibliography{2025bthesis\_tachibana.bib}
+  \end{verbatim}
+  はそのまま変更せず，\texttt{2025bthesis\_tachibana.bib} を編集してください．
+
+
+  \item texファイルの本文中で引用したい箇所に \verb|\cite{キー}| を書きます．
+\end{enumerate}
+引用すると参考文献の章に参考文献が記述される.以下がその例です．
+
+ \vspace{1em}
+「Javaバイトコード変換による構造リフレクションの実現」\cite{Chiba2000}
+
+
+\chapter{PDFの生成}
+\texttt{llmk.toml}と\texttt{2025bthesis\_tachibana.tex}があるディレクトリの階層までカレントディレクトリを移動し，以下のコマンドを実行することで \texttt{2025bthesis\_tachibana.pdf}が作成されます．
+\begin{verbatim}
+    llmk
+\end{verbatim}
+不要な中間ファイルを削除する．最終成果物は残したまま :
+\begin{verbatim}
+    llmk -c
+\end{verbatim}
+\texttt{llmk}コマンドで作成されたすべてのファイルを削除する :
+\begin{verbatim}
+    llmk -C
+\end{verbatim}
+
+
+\textbf{注意：}
+
+\TeX ファイルのファイル名を変更したらコンパイルに失敗します．
+これは，\texttt{llmk.toml} に \TeX のファイル名が記載されているためです．
+そのため，\TeX ファイルの名前を変更する場合には，\texttt{llmk.toml} の内容も同時に変更してください．
+
+\chapter{GitHubの利用}
+
+\section{初めてのリポジトリ作成}
+\begin{enumerate}
+    \item まず、ウェブブラウで\href{https://github.co.jp/}{GitHub}にログインします．
+    \item 緑色のボタンを押してリポジトリを作成します．作成したリポジトリのURLをコピーします．
+    \item Gitに公開するファイルがある階層までカレントディレクトリを移動し、以下のコマンドでリポジトリを初期化します．
+    \begin{lstlisting}[language=sh]
+    git init
+    \end{lstlisting}
+    \item 以下のコマンドで全てのファイルをリポジトリに追加します．
+    \begin{lstlisting}[language=sh]
+    git add .
+     \end{lstlisting}
+     一部のファイルのみ追加する場合は以下のコマンドを使用します．
+    \begin{lstlisting}[language=sh]
+    git add ファイル名
+    \end{lstlisting}
+    \item 変更内容の説明を書き、コミットします．
+    \begin{lstlisting}[language=sh]
+    git commit -m "firstcommit"
+    \end{lstlisting}
+    \item GitHubと連携を取ります．
+    \begin{lstlisting}[language=sh]
+    git remote add origin <GitHubURL>
+    \end{lstlisting}
+    \item カレントブランチの名前を main に変更します．
+    \begin{lstlisting}[language=sh]
+    git branch -M main
+    \end{lstlisting}
+    \item GitHubにファイルをアップロード（プッシュ）します．
+    \begin{lstlisting}[language=sh]
+    git push -u origin main
+    \end{lstlisting}
+\end{enumerate}
+
+\section{mainにプッシュ}
+変更したファイルをgithubのmainリポジトリに反映するには以下のコマンドを入力します．
+  \begin{lstlisting}[language=sh]
+    git add .
+    git commit -m "commit"
+    git push origin main
+    \end{lstlisting}
+
+ \section{ブランチを作成してプッシュ}
+ githubにブランチを作成して、ファイルをブランチに反映するには以下のコマンドを入力します．
+  \begin{lstlisting}[language=sh]
+    git switch -c <branchname>
+    git add .
+    git commit -m "commit"
+    git push origin <branchname>
+    \end{lstlisting}
+
+\section{リモートの変更を取得}
+リモートリポジトリ（GitHub）での変更をローカル環境に反映するには以下のコマンドを入力します．
+  \begin{lstlisting}[language=sh]
+    git pull origin <branchname>
+    \end{lstlisting}
+
+
+\chapter{まとめ}
+
+本ドキュメントでは、特別研究II研究報告書テンプレート
+（\texttt{2025bthesis\_tachibana.tex}）の各項目とコンパイル手順，図表挿入や文献管理の方法を解説した．
+実際に上記手順でコンパイルを行っていただければ，学内要件を満たした体裁の特別研究II研究報告書が生成されます．
+不明点があれば、指導教員や演習担当教員に確認のうえ，適宜修正して利用してください．
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% 参考文献
+
+\bibliographystyle{csg-thesis}
+\bibliography{2025bthesis_tachibana.bib}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+\end{document}
